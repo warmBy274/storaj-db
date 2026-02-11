@@ -1,9 +1,11 @@
 [package]
 name = "storaj-db"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 
 [dependencies]
 rand = "0.9.2"
-little-collections = "3.1.1"
+kanal = "0.1.1"
+little-sync = "1.0.1"
+little-collections = "3.3.2"
 tokio = { version = "1.47.1", features = ["full"] }

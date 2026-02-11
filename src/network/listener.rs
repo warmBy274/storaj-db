@@ -1,82 +1,104 @@
 use tokio::{
     net::{TcpSocket, TcpListener, TcpStream},
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::{mpsc::UnboundedSender, RwLock},
     spawn
 };
-use std::{sync::Arc, collections::HashMap};
+use little_collections::fn_map::FnMap;
+use little_sync::rwlock::RwLock;
+use kanal::AsyncSender;
+use std::sync::Arc;
 use rand::random;
 use crate::*;
 
 pub struct Listener {
     listener: TcpListener,
-    users: Arc<RwLock<HashMap<String, String>>>,
-    operation_tx: UnboundedSender<(Operation, UnboundedSender<OperationResult>)>,
-
+    users: Arc<RwLock<FnMap<User>>>,
+    roles: Arc<RwLock<FnMap<Role>>>,
+    manager: AsyncSender<(Operation, AsyncSender<OperationResult>)>
 }
 impl Listener {
-    pub fn new(port: u16, users: Arc<RwLock<HashMap<String, String>>>, operation_tx: UnboundedSender<(Operation, UnboundedSender<OperationResult>)>) -> Self {
+    pub fn new(
+        port: u16,
+        users: Arc<RwLock<FnMap<User>>>,
+        roles: Arc<RwLock<FnMap<Role>>>,
+        manager: AsyncSender<(Operation, AsyncSender<OperationResult>)>
+    ) -> Self {
         let socket = TcpSocket::new_v4().unwrap();
         socket.bind(format!("127.0.0.1:{}", port).parse().unwrap()).expect("Failed to bind port because is already in use");
         Self {
             listener: socket.listen(1024).unwrap(),
             users,
-            operation_tx
+            roles,
+            manager
         }
     }
     pub fn start(self) -> () {
         spawn(async move {
             loop {
-                if let Ok((stream, addr)) = self.listener.accept().await {
-                    println!("Accepted connection from {}", addr);
-                    authentificate(stream, self.users.clone(), self.operation_tx.clone());
+                match self.listener.accept().await {
+                    Ok((stream, addr)) => {
+                        println!("(Listener): Accepted connection from {}", addr);
+                        process_authentication(stream, self.users.clone(), self.roles.clone(), self.manager.clone());
+                    }
+                    Err(e) => {
+                        eprintln!("(Listener): Failed to accept connection: {}", e);
+                    }
                 }
             }
         });
     }
 }
 
-fn authentificate(mut stream: TcpStream, users: Arc<RwLock<HashMap<String, String>>>, operation_tx: UnboundedSender<(Operation, UnboundedSender<OperationResult>)>) -> () {
+fn process_authentication(
+    mut stream: TcpStream,
+    users: Arc<RwLock<FnMap<User>>>,
+    roles: Arc<RwLock<FnMap<Role>>>,
+    manager: AsyncSender<(Operation, AsyncSender<OperationResult>)>
+) -> () {
     spawn(async move {
         let mut buffer = [0u8; 8192];
-        let net = &mut stream;
         let session = loop {
-            if let Ok(n) = net.read(&mut buffer).await {
-                if n == 0 {
-                    println!("Authentication aborted");
+            match stream.read(&mut buffer).await {
+                Ok(0) => {
+                    println!("(Listener): Authentication aborted");
                     break None;
                 }
-                let auth = Authentication::deserialize(&buffer[..n]);
-                if let Some(password) = users.read().await.get(&auth.name) {
-                    if auth.password == *password {
-                        let session = random();
-                        if let Err(e) = net.write(&Answer::GiveSession(session).serialize()).await {
-                            eprintln!("Failed to write successfull authentification packet: {}", e);
-                            break None;
+                Ok(n) => {
+                    let auth = Authentication::deserialize(&buffer[..n]);
+                    if let Some(user) = users.read().get(auth.id as usize) {
+                        if auth.password == user.password {
+                            let id = random();
+                            println!("(Listener): Successfill authentication");
+                            if let Err(e) = stream.write(&Answer::GiveSession(id).serialize()).await {
+                                eprintln!("\tFailed to write network packet: {}", e);
+                                break None;
+                            }
+                            break Some((id, user.id));
                         }
-                        break Some(session);
+                        else {
+                            eprintln!("(Listener): Wrong Password");
+                            if let Err(e) = stream.write(&Answer::WrongPassword.serialize()).await {
+                                eprintln!("\tFailed to write network packet: {}", e);
+                                break None;
+                            }
+                        }
                     }
                     else {
-                        if let Err(e) = net.write(&Answer::WrongPassword.serialize()).await {
-                            eprintln!("Failed to write wrong password authentification packet: {}", e);
+                        eprintln!("(Listener): Wrong User");
+                        if let Err(e) = stream.write(&Answer::WrongUser.serialize()).await {
+                            eprintln!("Failed to write network packet: {}", e);
                             break None;
                         }
                     }
                 }
-                else {
-                    if let Err(e) = net.write(&Answer::WrongUser.serialize()).await {
-                        eprintln!("Failed to write wrong user authentification packet: {}", e);
-                        break None;
-                    }
+                Err(e) => {
+                    eprintln!("(Listener): Failed to authenticate user: {}", e);
+                    break None;
                 }
             }
-            else {
-                println!("Authentication aborted");
-                break None;
-            }
         };
-        if let Some(id) = session {
-            Session::new(id, stream, operation_tx).start();
+        if let Some((id, user)) = session {
+            Session::new(id, user, users, roles, stream, manager).start();
         }
     });
 }

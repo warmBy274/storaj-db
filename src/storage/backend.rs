@@ -9,11 +9,11 @@ use little_collections::heap_array::HeapArray as Array;
 use crate::*;
 
 pub trait Backend: Send + Sync + 'static {
-    fn save(&self, table: &Table) -> Result<(), ()>;
+    fn force_save(&self, table: &Table) -> Result<(), ()>;
     fn get_row(&self, i: usize) -> Result<Array<Data>, ()>;
-    fn set_row(&mut self, i: usize, new_row: Array<Data>) -> Result<(), ()>;
+    fn set_row(&mut self, i: usize, row: Array<Data>) -> Result<(), ()>;
     fn add_row(&mut self, row: Array<Data>) -> Result<(), ()>;
-    fn remove_row(&mut self, i: usize) -> Result<(), ()>;
+    fn remove_row(&mut self, i: usize) -> Result<Array<Data>, ()>;
 }
 
 pub struct MemoryBackend {
@@ -31,13 +31,13 @@ impl MemoryBackend {
     }
 }
 impl Backend for MemoryBackend {
-    fn save(&self, _: &Table) -> Result<(), ()> {Ok(())}
+    fn force_save(&self, _: &Table) -> Result<(), ()> {Ok(())}
     fn get_row(&self, i: usize) -> Result<Array<Data>, ()> {
         self.rows.get(i).ok_or(()).cloned()
     }
-    fn set_row(&mut self, i: usize, new_row: Array<Data>) -> Result<(), ()> {
-        if let Some(row) = self.rows.get_mut(i) {
-            *row = new_row;
+    fn set_row(&mut self, i: usize, row: Array<Data>) -> Result<(), ()> {
+        if self.rows.len() > i {
+            self.rows[i] = row;
             Ok(())
         }
         else {Err(())}
@@ -49,8 +49,8 @@ impl Backend for MemoryBackend {
             Ok(())
         }
     }
-    fn remove_row(&mut self, i: usize) -> Result<(), ()> {
-        if self.rows.remove(i).is_some() {Ok(())}
+    fn remove_row(&mut self, i: usize) -> Result<Array<Data>, ()> {
+        if let Some(row) = self.rows.remove(i) {Ok(row)}
         else {Err(())}
     }
 }

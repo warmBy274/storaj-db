@@ -1,17 +1,15 @@
 use crate::*;
 
 pub struct Authentication {
-    pub name: String,
+    pub id: u64,
     pub password: String
 }
-impl Authentication {
-    pub fn deserialize(data: &[u8]) -> Self {
-        let name_len = get_u64(&data[..8]) as usize;
+impl Deserializable for Authentication {
+    fn deserialize(data: &[u8]) -> Self {
         let password_len = get_u64(&data[8..16]) as usize;
-        let name = String::from_utf8(data[16..16 + name_len].to_vec()).expect("Non-UTF8 username");
-        let password = String::from_utf8(data[16 + name_len..16 + name_len + password_len].to_vec()).expect("Non-UTF8 password");
+        let password = String::from_utf8(data[16..16 + password_len].to_vec()).unwrap_or("Non-UTF8 password".to_string());
         Self {
-            name,
+            id: get_u64(&data[..8]),
             password
         }
     }
@@ -21,8 +19,8 @@ pub struct Request {
     pub session: u64,
     pub operation: Operation
 }
-impl Request {
-    pub fn deserialize(data: &[u8]) -> Self {
+impl Deserializable for Request {
+    fn deserialize(data: &[u8]) -> Self {
         Self {
             session: get_u64(&data[0..8]),
             operation: Operation::deserialize(&data[8..])
@@ -37,8 +35,8 @@ pub enum Answer {
     WrongPassword,
     WrongSessionId
 }
-impl Answer {
-    pub fn serialize(self) -> Vec<u8> {
+impl Serializable for Answer {
+    fn serialize(&self) -> Vec<u8> {
         let mut result = Vec::new();
         match self {
             Self::Operation(or) => {
