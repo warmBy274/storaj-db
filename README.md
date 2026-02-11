@@ -2,7 +2,7 @@
 
 ⚠️ This project is in the early stages of development.
 
-Storaj-DB is a database management system written in Rust, aiming for high performance and flexibility. It currently supports in-memory storage with basic table operations and network request handling. Persistent storage, access control, global database management and more advanced features are actively being developed.
+Storaj-DB is a database management system written in Rust, aiming for high performance and flexibility. It currently supports in-memory storage with basic table operations and network request handling. Persistent storage, global database management and more advanced features are actively being developed.
 
 ## Architecture Overview
 
@@ -15,7 +15,7 @@ Storaj-DB is a database management system written in Rust, aiming for high perfo
   - Request parsing and processing
   - Response generation and sending
 - Table Operations — basic operations are implemented
-- Access Control — roles and users system is currently under development (not yet functional)
+- Access Control — roles and users system are implemented
 - Global Operations — database-wide commands (create/drop tables, manage users/roles/permissions etc.) are under development
 - Interactive blocking CLI mode — type commands directly in the running program, similar to a simple REPL is under development
 
@@ -27,6 +27,7 @@ Storaj-DB is a database management system written in Rust, aiming for high perfo
 - Request parsing and processing pipeline
 - Response generation and sending
 - Basic table operations
+- Access Control
 - MemoryBackend (complete in-memory storage backend)
 
 ### 🔄 In Active Development
